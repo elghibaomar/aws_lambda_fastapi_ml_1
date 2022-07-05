@@ -1,18 +1,39 @@
-from fastapi import FastAPI
-from mangum import Mangum
+from fastapi import FastAPI, File, Form, UploadFile
+from pydantic import BaseModel
+import pickle
+import numpy as np
+import pandas as pd
+from io import StringIO
 
-from api.v1.api import router as api_router
+app = FastAPI()
 
-app = FastAPI(title='Serverless Lambda FastAPI')
+class IrisSpecies(BaseModel):
+    sepal_length: float 
+    sepal_width: float 
+    petal_length: float 
+    petal_width: float
 
-app.include_router(api_router, prefix="/api/v1")
+@app.post('/predict')
+async def predict_species(iris: IrisSpecies):
+    data = iris.dict()
+    loaded_model = pickle.load(open('LRClassifier.pkl', 'rb'))
+    data_in = [[data['sepal_length'], data['sepal_width'], data['petal_length'], data['petal_width']]]
+    prediction = loaded_model.predict(data_in)
+    probability = loaded_model.predict_proba(data_in).max()
+            
+    return {
+        'prediction': prediction[0],
+        'probability': probability
+    }
 
-
-@app.get("/",  tags=["Endpoint Test"])
-def main_endpoint_test():
-    return {"message": "Welcome CI/CD Pipeline with GitHub Actions!"}
-
-
-# to make it work with Amazon Lambda, we create a handler object
-handler = Mangum(app=app)
-
+@app.post("/files/")
+async def create_file(file: bytes = File(...), token: str = Form(...)):
+    s=str(file,'utf-8')
+    data = StringIO(s)
+    df=pd.read_csv(data)
+    print(df)
+    #return df
+    return {
+        "file": df,
+        "token": token,
+    }
